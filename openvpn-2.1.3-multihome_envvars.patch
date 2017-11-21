@@ -1,0 +1,79 @@
+diff -rupN openvpn-2.1.3/socket.c openvpn-2.1.3-patched/socket.c
+--- openvpn-2.1.3/socket.c	2010-07-26 08:15:03.000000000 +0200
++++ openvpn-2.1.3-patched/socket.c	2011-09-20 17:57:04.020003355 +0200
+@@ -1679,6 +1679,48 @@ link_socket_connection_initiated (const
+   /* set environmental vars */
+   setenv_str (es, "common_name", common_name);
+ 
++#if ENABLE_IP_PKTINFO
++  {
++    /* determine server's IP and interface where the connection came in,
++       and create corresponding environment variables  */
++
++    char ifname[IF_NAMESIZE];
++    int ok_ifindex = 1;     /* whether if_indextoname() succeeded */
++
++    if (addr_defined_ipi(act))
++      {
++        struct openvpn_sockaddr sa;
++        char v4addr[INET_ADDRSTRLEN];
++        CLEAR (sa);
++        CLEAR (v4addr);
++
++#ifdef IP_PKTINFO
++        sa.sa.sin_addr = act->pi.ipi_spec_dst;
++        if (!if_indextoname(act->pi.ipi_ifindex, ifname))
++          ok_ifindex = 0;
++
++#elif defined(IP_RECVDSTADDR)
++        sa.sa.sin_addr = act->pi;
++        ifname[0] = 0;
++
++#else
++#error ENABLE_IP_PKTINFO is set without IP_PKTINFO xor IP_RECVDSTADDR (fix syshead.h)
++#endif
++
++        if (ok_ifindex)
++          setenv_str (es, "multihome_iface", ifname);
++        else
++          msg (M_WARN, "WARNING: if_indextoname() failed for index %d: %s", act->pi.ipi_ifindex, strerror(errno));
++
++        if (inet_ntop(AF_INET, &(sa.sa.sin_addr), v4addr, INET_ADDRSTRLEN))
++          setenv_str (es, "multihome_ip", v4addr);
++        else
++          msg (M_WARN, "WARNING: inet_ntop() failed when converting address: %s", strerror(errno));
++
++      }
++  }
++#endif
++
+   /* Process --ipchange plugin */
+   if (plugin_defined (info->plugins, OPENVPN_PLUGIN_IPCHANGE))
+     {
+diff -rupN openvpn-2.1.3/socket.h openvpn-2.1.3-patched/socket.h
+--- openvpn-2.1.3/socket.h	2010-07-12 03:54:09.000000000 +0200
++++ openvpn-2.1.3-patched/socket.h	2011-09-20 17:56:20.632006151 +0200
+@@ -531,6 +531,23 @@ addr_defined (const struct openvpn_socka
+ }
+ 
+ static inline bool
++addr_defined_ipi (const struct link_socket_actual *lsa)
++{
++#if ENABLE_IP_PKTINFO
++  if (!lsa) return 0;
++#ifdef HAVE_IN_PKTINFO
++  return lsa->pi.ipi_spec_dst.s_addr != 0;
++#endif
++#ifdef IP_RECVDSTADDR
++  return lsa->pi.s_addr != 0;
++#endif
++#else
++  ASSERT(0);
++#endif
++  return false;
++}
++
++static inline bool
+ link_socket_actual_defined (const struct link_socket_actual *act)
+ {
+   return act && addr_defined (&act->dest);

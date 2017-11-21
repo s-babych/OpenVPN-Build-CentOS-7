@@ -1,0 +1,49 @@
+--- openvpn-2.4.4/src/openvpn/socket.c.orig	2017-11-16 02:35:23.213404642 +0200
++++ openvpn-2.4.4/src/openvpn/socket.c	2017-11-16 12:19:15.374600974 +0200
+@@ -2324,6 +2324,46 @@
+ 
+     /* set environmental vars */
+     setenv_str(es, "common_name", common_name);
++ 
++#if ENABLE_IP_PKTINFO
++    {
++      /* determine server's IP and interface where the connection came in,
++         and create corresponding environment variables  */
++
++      if (addr_defined_ipi(act))
++      {
++        switch (act->dest.addr.sa.sa_family)
++        {
++          case AF_INET:
++          {
++            char ifname[IF_NAMESIZE] = "[undef]";
++            char hostaddr[NI_MAXHOST] = "";
++            char servname[NI_MAXSERV] = "";
++            struct openvpn_sockaddr osa;
++            socklen_t salen = sizeof(struct sockaddr_in);
++            CLEAR(osa);
++            osa.addr.in4.sin_family = AF_INET;
++#if defined(HAVE_IN_PKTINFO) && defined(HAVE_IPI_SPEC_DST)
++            osa.addr.in4.sin_addr = act->pi.in4.ipi_spec_dst;
++            if_indextoname(act->pi.in4.ipi_ifindex, ifname);
++#elif defined(IP_RECVDSTADDR)
++            osa.addr.in4.sin_addr = act->pi.in4;
++            ifname[0] = 0;
++#else  /* if defined(HAVE_IN_PKTINFO) && defined(HAVE_IPI_SPEC_DST) */
++#error ENABLE_IP_PKTINFO is set without IP_PKTINFO xor IP_RECVDSTADDR (fix syshead.h)
++#endif
++            setenv_str (es, "multihome_family", "AF_INET");
++            setenv_str (es, "multihome_iface",  ifname);
++            if (!getnameinfo(&osa.addr.sa, salen, hostaddr, sizeof(hostaddr),
++                        servname, sizeof(servname), NI_NUMERICHOST | NI_NUMERICSERV))
++              setenv_str (es, "multihome_ip",   hostaddr);
++          }
++          break;
++        }
++
++      }
++    }
++#endif
+ 
+     /* Process --ipchange plugin */
+     if (plugin_defined(info->plugins, OPENVPN_PLUGIN_IPCHANGE))
