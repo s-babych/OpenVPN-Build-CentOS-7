@@ -3,28 +3,33 @@ SOURCE  	= openvpn-${VERSION}
 TARBALL 	= ${SOURCE}.tar.gz
 URL		= https://swupdate.openvpn.org/community/releases/${TARBALL}
 
-# yum -y install gcc
-# yum -y install openssl-devel
-# yum -y install lzo-devel
-# yum -y install pam-devel
-# yum -y install patch
+ESSENTIALS	= gcc openssl-devel lzo-devel pam-devel patch
 
 usage:
-	@echo 'make [all|clean|clean-all]'
+	@echo 'make [build|install|clean|clean-all]'
 
-all: ${TARBALL} ${SOURCE}
+build: essentials ${TARBALL} ${SOURCE}
 	@:
 
-clean:
-	rm -rf ${SOURCE}
+install: build
+	cd ${SOURCE} && make install
 
-clean-all: clean
-	rm  -f ${TARBALL}
+essentials: begin-check-essentials ${ESSENTIALS} end-check-essentials
 
-${TARBALL}:
-	wget ${URL}
+begin-check-essentials:;@echo -n "Essenyials check:"
 
-CONFIGURE	:= cd ${SOURCE} && ./configure
+${ESSENTIALS}:
+	@echo -n " $@"
+	@if ! rpm -qa | grep -q "^$@-"; then		\
+	   echo;					\
+	   echo "Install $@";				\
+	   yum -y -q install $@;			\
+	   echo -n "Continue of essentials check";	\
+	 fi
+
+end-check-essentials:;@echo " Done"
+
+CONFIGURE	:= ./configure
 CONFIGURE	+= --prefix=$$(pwd)/../root
 CONFIGURE	+= --includedir=/usr/include
 CONFIGURE	+= --libdir=/usr/lib64
@@ -35,4 +40,18 @@ CONFIGURE	+= --mandir=/usr/share/man
 ${SOURCE}:
 	tar -zxf ${TARBALL}
 	patch -p0 < openvpn-2.4.4-multihome_envvars.patch
-	${CONFIGURE}
+	@echo -n "Configure (see log: $$(pwd)/${SOURCE}/configure.log) ... "; \
+	 cd ${SOURCE} && ${CONFIGURE} > configure.log
+	@echo Done
+	@echo -n "Compile (see log: $$(pwd)/${SOURCE}/make.log) ... "; \
+	 cd ${SOURCE} && make > make.log 2>&1
+	@echo Done
+
+${TARBALL}:
+	wget -q ${URL}
+
+clean:
+	rm -rf ${SOURCE}
+
+clean-all: clean
+	rm  -f ${TARBALL}
