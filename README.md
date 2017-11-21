@@ -1,1 +1,1 @@
-# OpenVPN-Build-CentOS-7
+# Build of the OpenVPN on CentOS 7
